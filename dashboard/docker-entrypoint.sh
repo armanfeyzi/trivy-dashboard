@@ -14,5 +14,5 @@ if [ -n "$S3_BUCKET" ]; then
     echo "✅ Data sync complete!"
 fi
 
-# Start nginx with custom PID file location
-exec nginx -g "daemon off; pid /tmp/nginx.pid;"
+# Start nginx (using pid from nginx.conf)
+exec nginx -g "daemon off;"
