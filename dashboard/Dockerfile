@@ -47,7 +47,7 @@ RUN chmod +x /docker-entrypoint.sh
 # Use nginx user
 USER nginx
 
-EXPOSE 80
+EXPOSE 8080
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
