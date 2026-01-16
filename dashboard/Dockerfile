@@ -25,17 +25,20 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Create data directory for S3 sync and fix permissions for non-root
+# Also modify main nginx.conf to use /tmp for PID file
 RUN mkdir -p /usr/share/nginx/html/data && \
     mkdir -p /var/cache/nginx/client_temp && \
     mkdir -p /var/cache/nginx/proxy_temp && \
     mkdir -p /var/cache/nginx/fastcgi_temp && \
     mkdir -p /var/cache/nginx/uwsgi_temp && \
     mkdir -p /var/cache/nginx/scgi_temp && \
-    mkdir -p /var/run && \
+    mkdir -p /tmp && \
     chown -R nginx:nginx /usr/share/nginx/html && \
     chown -R nginx:nginx /var/cache/nginx && \
-    chown -R nginx:nginx /var/run && \
-    chmod -R 755 /var/cache/nginx
+    chown -R nginx:nginx /tmp && \
+    chmod -R 755 /var/cache/nginx && \
+    # Modify main nginx.conf to use /tmp/nginx.pid
+    sed -i 's|/var/run/nginx.pid|/tmp/nginx.pid|g' /etc/nginx/nginx.conf
 
 # Install AWS CLI for data sync
 RUN apk add --no-cache aws-cli
@@ -51,4 +54,3 @@ EXPOSE 8080
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
-
