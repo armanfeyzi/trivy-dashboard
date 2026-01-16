@@ -1,0 +1,33 @@
+# Trivy Dashboard Ingress Example
+# Copy this file to ingress.yaml and customize for your environment
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: trivy-dashboard
+  namespace: trivy-dashboard
+  labels:
+    app.kubernetes.io/name: trivy-dashboard
+    app.kubernetes.io/component: dashboard
+  annotations:
+    # Uncomment and modify based on your ingress controller
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx  # Change to your ingress class
+  rules:
+    - host: trivy.example.com  # Change to your domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: trivy-dashboard
+                port:
+                  name: http
+  # Uncomment for TLS
+  # tls:
+  #   - hosts:
+  #       - trivy.example.com
+  #     secretName: trivy-dashboard-tls

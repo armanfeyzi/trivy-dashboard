@@ -1,0 +1,65 @@
+{{- if .Values.exporter.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trivy-dashboard.fullname" . }}-exporter
+  namespace: {{ include "trivy-dashboard.namespace" . }}
+  labels:
+    {{- include "trivy-dashboard.labels" . | nindent 4 }}
+    app.kubernetes.io/component: exporter
+spec:
+  replicas: {{ .Values.exporter.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "trivy-dashboard.exporter.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "trivy-dashboard.exporter.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "trivy-dashboard.fullname" . }}-exporter
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: exporter
+          image: "{{ .Values.exporter.image.repository }}:{{ .Values.exporter.image.tag }}"
+          imagePullPolicy: {{ .Values.exporter.image.pullPolicy }}
+          env:
+            - name: CLUSTER_NAME
+              value: {{ .Values.clusterName | quote }}
+            - name: S3_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trivy-dashboard.secretName" . }}
+                  key: S3_BUCKET
+            - name: S3_PREFIX
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trivy-dashboard.secretName" . }}
+                  key: S3_PREFIX
+            - name: AWS_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trivy-dashboard.secretName" . }}
+                  key: AWS_REGION
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trivy-dashboard.secretName" . }}
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trivy-dashboard.secretName" . }}
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: SYNC_INTERVAL
+              value: {{ .Values.exporter.syncInterval | quote }}
+          resources:
+            {{- toYaml .Values.exporter.resources | nindent 12 }}
+{{- end }}

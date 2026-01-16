@@ -1,0 +1,87 @@
+# Trivy Dashboard Helm Values
+# Configure your deployment here
+
+# Cluster name for the exporter (required for multi-cluster setups)
+# Each cluster should have a unique name
+clusterName: "my-cluster"
+
+# Namespace configuration
+namespace:
+  create: true
+  name: trivy-dashboard
+
+# Dashboard configuration
+dashboard:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: armanfeyzi/trivy-dashboard
+    tag: "v1.1.0"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  service:
+    type: ClusterIP
+    port: 80
+
+# Exporter configuration
+exporter:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: armanfeyzi/trivy-exporter
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  # Sync interval in seconds
+  syncInterval: 300
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# S3 configuration for storing/reading reports
+s3:
+  bucket: ""           # Required: your S3 bucket name
+  region: "eu-west-1"  # AWS region
+  prefix: "trivy-reports"  # Optional prefix
+
+  # AWS credentials (use IAM roles in production when possible)
+  # These can also be provided via existingSecret
+  accessKeyId: ""
+  secretAccessKey: ""
+
+  # Use existing secret instead of creating one
+  # Secret must have keys: S3_BUCKET, AWS_REGION, S3_PREFIX, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+  existingSecret: ""
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: trivy.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+    # - secretName: trivy-dashboard-tls
+    #   hosts:
+    #     - trivy.example.com
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+
+# Image pull secrets (if using private registry)
+imagePullSecrets: []

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: trivy-dashboard
+  labels:
+    app.kubernetes.io/name: trivy-dashboard
+    app.kubernetes.io/component: security

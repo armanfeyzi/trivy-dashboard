@@ -1,0 +1,79 @@
+# Trivy Exporter Deployment
+#
+# IMPORTANT: Set CLUSTER_NAME environment variable to identify this cluster
+# in multi-cluster setups. Each cluster should have a unique name.
+#
+# Example: kubectl set env deployment/trivy-exporter CLUSTER_NAME=production
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trivy-exporter
+  namespace: trivy-dashboard
+  labels:
+    app.kubernetes.io/name: trivy-dashboard
+    app.kubernetes.io/component: exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: trivy-dashboard
+      app.kubernetes.io/component: exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: trivy-dashboard
+        app.kubernetes.io/component: exporter
+    spec:
+      serviceAccountName: trivy-exporter
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: exporter
+          image: armanfeyzi/trivy-exporter:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            # REQUIRED: Set this to identify your cluster
+            # Change "my-cluster" to your actual cluster name
+            - name: CLUSTER_NAME
+              value: "my-cluster"
+            
+            # S3 configuration from secret
+            - name: S3_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: trivy-dashboard-s3
+                  key: S3_BUCKET
+            - name: S3_PREFIX
+              valueFrom:
+                secretKeyRef:
+                  name: trivy-dashboard-s3
+                  key: S3_PREFIX
+            - name: AWS_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: trivy-dashboard-s3
+                  key: AWS_REGION
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: trivy-dashboard-s3
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: trivy-dashboard-s3
+                  key: AWS_SECRET_ACCESS_KEY
+            
+            # Sync interval in seconds (default: 300 = 5 minutes)
+            - name: SYNC_INTERVAL
+              value: "300"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
