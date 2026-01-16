@@ -24,9 +24,18 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Copy built files
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Create data directory for S3 sync
+# Create data directory for S3 sync and fix permissions for non-root
 RUN mkdir -p /usr/share/nginx/html/data && \
-    chown -R nginx:nginx /usr/share/nginx/html
+    mkdir -p /var/cache/nginx/client_temp && \
+    mkdir -p /var/cache/nginx/proxy_temp && \
+    mkdir -p /var/cache/nginx/fastcgi_temp && \
+    mkdir -p /var/cache/nginx/uwsgi_temp && \
+    mkdir -p /var/cache/nginx/scgi_temp && \
+    mkdir -p /var/run && \
+    chown -R nginx:nginx /usr/share/nginx/html && \
+    chown -R nginx:nginx /var/cache/nginx && \
+    chown -R nginx:nginx /var/run && \
+    chmod -R 755 /var/cache/nginx
 
 # Install AWS CLI for data sync
 RUN apk add --no-cache aws-cli
@@ -35,7 +44,11 @@ RUN apk add --no-cache aws-cli
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
+# Use nginx user
+USER nginx
+
 EXPOSE 80
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
+
