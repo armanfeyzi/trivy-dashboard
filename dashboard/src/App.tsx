@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Shield, RefreshCw, Download, Sun, Moon } from 'lucide-react';
+import { Shield, Sun, Moon } from 'lucide-react';
+import { Sidebar } from './components/Sidebar';
 import { DashboardOverview } from './components/DashboardOverview';
 import { FilterBar } from './components/FilterBar';
 import { VulnerabilityTable } from './components/VulnerabilityTable';
@@ -7,7 +8,6 @@ import { DetailDrawer } from './components/DetailDrawer';
 import {
     fetchAllClusters,
     getAvailableClusters,
-    exportAsCSV,
 } from './lib/api';
 import type { ClusterData, VulnerabilitySummary, VulnerabilityReport } from './lib/types';
 
@@ -32,7 +32,9 @@ function App() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    // View state
+    const [activeView, setActiveView] = useState('vulnerability');
 
     // Detail drawer state
     const [selectedReport, setSelectedReport] = useState<VulnerabilityReport | null>(null);
@@ -43,8 +45,7 @@ function App() {
     const [severity, setSeverity] = useState('');
 
     // Fetch data
-    const fetchData = useCallback(async (showRefreshIndicator = true) => {
-        if (showRefreshIndicator) setIsRefreshing(true);
+    const fetchData = useCallback(async () => {
         setError(null);
 
         try {
@@ -55,41 +56,84 @@ function App() {
             setError(err instanceof Error ? err.message : 'Failed to fetch data');
         } finally {
             setIsLoading(false);
-            setIsRefreshing(false);
         }
     }, []);
 
     // Initial fetch
     useEffect(() => {
-        fetchData(false);
+        fetchData();
     }, [fetchData]);
 
     // Auto-refresh every 30 seconds
     useEffect(() => {
         const interval = setInterval(() => {
-            fetchData(false);
+            fetchData();
         }, 30000);
         return () => clearInterval(interval);
     }, [fetchData]);
 
-    // Get all reports based on selected cluster
+    // Get current cluster data
+    const currentClusterData = useMemo(() => {
+        if (selectedCluster === 'all') {
+            // For 'all', we might need to aggregate, but for simplicty in this refactor, 
+            // let's just use the first one or aggregate if needed.
+            // Actually, the previous logic flattened reports.
+            // We need a helper to aggregate all report types across clusters.
+            return null;
+        }
+        return clusters.find((c) => c.cluster === selectedCluster);
+    }, [clusters, selectedCluster]);
+
+    // Helper to get reports based on view
+    const getCurrentReports = (clusterData: ClusterData | null) => {
+        if (!clusterData) return [];
+        switch (activeView) {
+            case 'vulnerability': return clusterData.vulnerabilityReports;
+            case 'config-audit': return clusterData.configAuditReports;
+            case 'rbac-assessment': return clusterData.rbacAssessmentReports;
+            case 'exposed-secret': return clusterData.exposedSecretReports;
+            case 'cluster-compliance': return clusterData.clusterComplianceReports;
+            case 'cluster-vulnerability': return clusterData.clusterVulnerabilityReports;
+            case 'cluster-rbac': return clusterData.clusterRbacAssessmentReports;
+            case 'sbom': return clusterData.sbomReports;
+            case 'cluster-sbom': return clusterData.clusterSbomReports;
+            default: return [];
+        }
+    };
+
+    // Aggregate reports for 'all' clusters
     const allReports = useMemo(() => {
         if (selectedCluster === 'all') {
-            return clusters.flatMap((c) => c.reports);
+            return clusters.flatMap((c) => {
+                switch (activeView) {
+                    case 'vulnerability': return c.vulnerabilityReports;
+                    case 'config-audit': return c.configAuditReports;
+                    case 'rbac-assessment': return c.rbacAssessmentReports;
+                    case 'exposed-secret': return c.exposedSecretReports;
+                    case 'cluster-compliance': return c.clusterComplianceReports;
+                    case 'cluster-vulnerability': return c.clusterVulnerabilityReports;
+                    case 'cluster-rbac': return c.clusterRbacAssessmentReports;
+                    case 'sbom': return c.sbomReports;
+                    case 'cluster-sbom': return c.clusterSbomReports;
+                    default: return [];
+                }
+            });
         }
-        return clusters.find((c) => c.cluster === selectedCluster)?.reports || [];
-    }, [clusters, selectedCluster]);
+        return getCurrentReports(currentClusterData || null) || [];
+    }, [clusters, selectedCluster, activeView, currentClusterData]);
 
     // Filter reports
     const filteredReports = useMemo(() => {
-        return allReports.filter((report) => {
+        return allReports.filter((report: any) => { // using any temporarily as reports types differ
             // Search filter
             if (search) {
                 const searchLower = search.toLowerCase();
+                // Generic search on common fields
                 const matchesSearch =
-                    report.containerName.toLowerCase().includes(searchLower) ||
-                    report.name.toLowerCase().includes(searchLower) ||
-                    report.namespace.toLowerCase().includes(searchLower);
+                    (report.containerName?.toLowerCase().includes(searchLower) || '') ||
+                    (report.name?.toLowerCase().includes(searchLower) || '') ||
+                    (report.namespace?.toLowerCase().includes(searchLower) || '');
+
                 if (!matchesSearch) return false;
             }
 
@@ -98,8 +142,8 @@ function App() {
                 return false;
             }
 
-            // Severity filter
-            if (severity) {
+            // Severity filter (only applies if summary exists)
+            if (severity && report.summary) {
                 const severityMap: Record<string, keyof VulnerabilitySummary> = {
                     critical: 'criticalCount',
                     high: 'highCount',
@@ -107,6 +151,7 @@ function App() {
                     low: 'lowCount',
                 };
                 const field = severityMap[severity];
+                // Check if field exists in summary (some reports might not have standard summary)
                 if (field && report.summary[field] === 0) {
                     return false;
                 }
@@ -118,22 +163,26 @@ function App() {
 
     // Get unique namespaces
     const namespaces = useMemo(() => {
-        const ns = new Set(allReports.map((r) => r.namespace));
+        const ns = new Set(allReports.map((r: any) => r.namespace));
         return Array.from(ns).sort();
     }, [allReports]);
 
-    // Calculate summary
+    // Calculate summary (only for vulnerability reports for now, or aggregate generic checks)
     const summary = useMemo((): VulnerabilitySummary => {
+        // Only calculate typical summary for vulnerability view for now to avoid confusion
+        if (activeView !== 'vulnerability') {
+            return { criticalCount: 0, highCount: 0, mediumCount: 0, lowCount: 0 };
+        }
         return filteredReports.reduce(
-            (acc, report) => ({
-                criticalCount: acc.criticalCount + report.summary.criticalCount,
-                highCount: acc.highCount + report.summary.highCount,
-                mediumCount: acc.mediumCount + report.summary.mediumCount,
-                lowCount: acc.lowCount + report.summary.lowCount,
+            (acc: any, report: any) => ({
+                criticalCount: acc.criticalCount + (report.summary?.criticalCount || 0),
+                highCount: acc.highCount + (report.summary?.highCount || 0),
+                mediumCount: acc.mediumCount + (report.summary?.mediumCount || 0),
+                lowCount: acc.lowCount + (report.summary?.lowCount || 0),
             }),
             { criticalCount: 0, highCount: 0, mediumCount: 0, lowCount: 0 }
         );
-    }, [filteredReports]);
+    }, [filteredReports, activeView]);
 
     // Clear filters
     const clearFilters = useCallback(() => {
@@ -161,9 +210,40 @@ function App() {
         setSelectedReport(report);
     }, []);
 
+    // Counts for sidebar
+    const counts = useMemo(() => {
+        // Aggregate across all clusters if selectedCluster is 'all'
+        const base = {
+            vulnerabilityReports: 0,
+            configAuditReports: 0,
+            rbacAssessmentReports: 0,
+            exposedSecretReports: 0,
+            clusterComplianceReports: 0,
+            clusterVulnerabilityReports: 0,
+            clusterRbacAssessmentReports: 0,
+            sbomReports: 0,
+            clusterSbomReports: 0,
+        };
+
+        const targetClusters = selectedCluster === 'all' ? clusters : clusters.filter(c => c.cluster === selectedCluster);
+
+        targetClusters.forEach(c => {
+            base.vulnerabilityReports += c.vulnerabilityReports?.length || 0;
+            base.configAuditReports += c.configAuditReports?.length || 0;
+            base.rbacAssessmentReports += c.rbacAssessmentReports?.length || 0;
+            base.exposedSecretReports += c.exposedSecretReports?.length || 0;
+            base.clusterComplianceReports += c.clusterComplianceReports?.length || 0;
+            base.clusterVulnerabilityReports += c.clusterVulnerabilityReports?.length || 0;
+            base.clusterRbacAssessmentReports += c.clusterRbacAssessmentReports?.length || 0;
+            base.sbomReports += c.sbomReports?.length || 0;
+            base.clusterSbomReports += c.clusterSbomReports?.length || 0;
+        });
+        return base;
+    }, [clusters, selectedCluster]);
+
     return (
         <div className="app-container">
-            {/* Header - Simplified */}
+            {/* Header */}
             <header className="header" style={{ height: '60px', padding: '0 var(--space-6)' }}>
                 <div className="header-content">
                     <div className="header-left">
@@ -188,78 +268,90 @@ function App() {
                         >
                             {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                         </button>
-                        <button
-                            className="btn btn-secondary"
-                            onClick={() => fetchData(true)}
-                            disabled={isRefreshing}
-                        >
-                            <RefreshCw size={16} className={isRefreshing ? 'spinning' : ''} />
-                            Refresh
-                        </button>
-                        <div style={{ position: 'relative' }}>
-                            <button
-                                className="btn btn-primary"
-                                onClick={() => exportAsCSV(filteredReports)}
-                                disabled={filteredReports.length === 0}
-                            >
-                                <Download size={16} />
-                                Export All
-                            </button>
-                        </div>
                     </div>
                 </div>
             </header>
 
-            {/* Main Content */}
-            <main className="main-content">
-                {/* Error State */}
-                {error && (
-                    <div className="error-container">
-                        <div className="error-icon">
-                            <Shield size={20} />
+            <div className="main-layout" style={{ display: 'flex', height: 'calc(100vh - 60px)' }}>
+                {/* Sidebar */}
+                <Sidebar
+                    activeView={activeView}
+                    onViewChange={setActiveView}
+                    counts={counts}
+                />
+
+                {/* Main Content */}
+                <main className="main-content" style={{ flex: 1, overflow: 'auto', padding: '2rem' }}>
+                    {/* Error State */}
+                    {error && (
+                        <div className="error-container">
+                            <div className="error-icon">
+                                <Shield size={20} />
+                            </div>
+                            <div className="error-content">
+                                <div className="error-title">Error Loading Data</div>
+                                <div className="error-message">{error}</div>
+                            </div>
+                            <button className="btn btn-secondary btn-sm" onClick={() => fetchData()}>
+                                Retry
+                            </button>
                         </div>
-                        <div className="error-content">
-                            <div className="error-title">Error Loading Data</div>
-                            <div className="error-message">{error}</div>
+                    )}
+
+                    {/* Dashboard Overview - Only show on Vulnerability view for now or generic stats */}
+                    {activeView === 'vulnerability' && (
+                        <DashboardOverview
+                            summary={summary}
+                            totalReports={filteredReports.length}
+                            clusters={clusters}
+                            selectedCluster={selectedCluster}
+                            isLoading={isLoading}
+                        />
+                    )}
+
+                    {/* Filters */}
+                    <FilterBar
+                        search={search}
+                        onSearchChange={setSearch}
+                        namespace={namespace}
+                        onNamespaceChange={setNamespace}
+                        severity={severity}
+                        onSeverityChange={setSeverity}
+                        namespaces={namespaces}
+                        onClearFilters={clearFilters}
+                        clusters={getAvailableClusters()}
+                        selectedCluster={selectedCluster}
+                        onClusterChange={setSelectedCluster}
+                    />
+
+                    {/* Table - Render different tables based on view */}
+                    {/* For now, reusing VulnerabilityTable for all as a fallback, but practically should trigger different components 
+                        since columns will differ. Using generic table logic would be better. */}
+
+                    {activeView === 'vulnerability' ? (
+                        <VulnerabilityTable
+                            reports={filteredReports}
+                            isLoading={isLoading}
+                            onExportReport={handleExportReport}
+                            onRowClick={handleRowClick}
+                        />
+                    ) : (
+                        <div className="card">
+                            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                <h3>{activeView.replace('-', ' ').toUpperCase()} Reports</h3>
+                                <p>Found {filteredReports.length} reports</p>
+                                {/* Temporary placeholder for other tables */}
+                                <div style={{ marginTop: '1rem', overflowX: 'auto' }}>
+                                    <pre style={{ textAlign: 'left', background: 'var(--bg-secondary)', padding: '1rem', borderRadius: '8px' }}>
+                                        {JSON.stringify(filteredReports.slice(0, 3), null, 2)}
+                                        {filteredReports.length > 3 && '\n... more items ...'}
+                                    </pre>
+                                </div>
+                            </div>
                         </div>
-                        <button className="btn btn-secondary btn-sm" onClick={() => fetchData(true)}>
-                            Retry
-                        </button>
-                    </div>
-                )}
-
-                {/* Dashboard Overview (Combined Stats & Charts) */}
-                <DashboardOverview
-                    summary={summary}
-                    totalReports={filteredReports.length}
-                    clusters={clusters}
-                    selectedCluster={selectedCluster}
-                    isLoading={isLoading}
-                />
-
-                {/* Filters (Now includes Cluster Selection) */}
-                <FilterBar
-                    search={search}
-                    onSearchChange={setSearch}
-                    namespace={namespace}
-                    onNamespaceChange={setNamespace}
-                    severity={severity}
-                    onSeverityChange={setSeverity}
-                    namespaces={namespaces}
-                    onClearFilters={clearFilters}
-                    clusters={getAvailableClusters()}
-                    selectedCluster={selectedCluster}
-                    onClusterChange={setSelectedCluster}
-                />
-
-                {/* Table */}
-                <VulnerabilityTable
-                    reports={filteredReports}
-                    isLoading={isLoading}
-                    onExportReport={handleExportReport}
-                    onRowClick={handleRowClick}
-                />
-            </main>
+                    )}
+                </main>
+            </div>
 
             {/* Detail Drawer */}
             <DetailDrawer

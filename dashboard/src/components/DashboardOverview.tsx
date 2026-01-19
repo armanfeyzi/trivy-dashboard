@@ -30,7 +30,7 @@ export function DashboardOverview({ summary, totalReports, clusters, selectedClu
 
     const barData = useMemo(() => {
         return clusters.map(cluster => ({
-            name: cluster.cluster.toUpperCase(),
+            name: cluster.cluster,
             Critical: cluster.summary.criticalCount,
             High: cluster.summary.highCount,
             Medium: cluster.summary.mediumCount,

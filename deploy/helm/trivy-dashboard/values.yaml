@@ -16,7 +16,7 @@ dashboard:
   replicaCount: 1
   image:
     repository: armanfeyzi/trivy-dashboard
-    tag: "v1.2.13"
+    tag: "v1.2.14"
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -25,7 +25,10 @@ dashboard:
     limits:
       cpu: 200m
       memory: 256Mi
-  # List of clusters to display in the dashboard
+  # List of ALL clusters to display in the dashboard.
+  # This list MUST match the 'clusterName' configured in the exporter of each cluster.
+  # Example: ["dev", "PRODUCTION", "staging"]
+  # The dashboard will try to fetch reports for each of these clusters.
   clusters:
     - dev
     - prod

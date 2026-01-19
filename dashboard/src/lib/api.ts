@@ -6,7 +6,7 @@ import type {
     Vulnerability,
     S3ReportResponse,
     S3VulnerabilityReportItem,
-    VulnerabilitySummary
+    VulnerabilitySummary,
 } from './types';
 
 // Configuration - can be overridden via environment variables
@@ -26,6 +26,19 @@ const API_CONFIG = {
     refreshInterval: 30000,
 };
 
+// Map of report types to their filenames (must match backend)
+const REPORT_FILES = {
+    vulnerabilityReports: 'vulnerability-reports.json',
+    configAuditReports: 'config-audit-reports.json',
+    clusterRbacAssessmentReports: 'cluster-rbac-assessment-reports.json',
+    exposedSecretReports: 'exposed-secret-reports.json',
+    clusterComplianceReports: 'cluster-compliance-reports.json',
+    clusterVulnerabilityReports: 'cluster-vulnerability-reports.json',
+    rbacAssessmentReports: 'rbac-assessment-reports.json',
+    sbomReports: 'sbom-reports.json',
+    clusterSbomReports: 'cluster-sbom-reports.json',
+};
+
 async function loadConfig(): Promise<void> {
     if (loadedConfig) return;
     try {
@@ -42,28 +55,67 @@ async function loadConfig(): Promise<void> {
 }
 
 /**
- * Fetches vulnerability reports for a specific cluster
+ * Fetches data for a specific cluster (all report types)
  */
 export async function fetchClusterData(cluster: string): Promise<ClusterData> {
     const startTime = performance.now();
+    const dataPath = `${API_CONFIG.dataPath}/${cluster}`;
 
     try {
-        const response = await fetch(`${API_CONFIG.dataPath}/${cluster}-reports.json`);
+        // Fetch all report types in parallel
+        const promises = Object.entries(REPORT_FILES).map(async ([key, filename]) => {
+            try {
+                const response = await fetch(`${dataPath}/${filename}`);
+                if (!response.ok) return { key, data: [] }; // Return empty if not found
 
-        if (!response.ok) {
-            if (response.status === 404) {
-                // Return empty data if no reports found
-                return createEmptyClusterData(cluster);
+                const json = await response.json();
+                return { key, data: json };
+            } catch (e) {
+                console.warn(`Failed to fetch ${key} for ${cluster}:`, e);
+                return { key, data: [] };
             }
-            throw new Error(`Failed to fetch ${cluster} reports: ${response.statusText}`);
-        }
+        });
 
-        const rawData: S3ReportResponse = await response.json();
-        const processedData = processRawReports(rawData, cluster);
+        const results = await Promise.all(promises);
+
+        // Construct the cluster data object
+        const clusterData: any = {
+            cluster,
+            lastUpdated: new Date().toISOString(),
+            summary: { criticalCount: 0, highCount: 0, mediumCount: 0, lowCount: 0 },
+            reports: [], // For backward compatibility
+            // Initialize with empty arrays
+            vulnerabilityReports: [],
+            configAuditReports: [],
+            clusterRbacAssessmentReports: [],
+            exposedSecretReports: [],
+            clusterComplianceReports: [],
+            clusterVulnerabilityReports: [],
+            rbacAssessmentReports: [],
+            sbomReports: [],
+            clusterSbomReports: [],
+        };
+
+        // Process results
+        results.forEach(({ key, data }) => {
+            if (key === 'vulnerabilityReports' && data.items) {
+                const processed = processRawReports(data as S3ReportResponse, cluster);
+                clusterData.vulnerabilityReports = processed;
+                clusterData.reports = processed; // Legacy support
+            } else if (data.items) {
+                // For now, store raw items or minimal processing until we have specific processors
+                clusterData[key] = data.items;
+            }
+        });
+
+        // Calculate aggregate summary (currently only based on vulnerability reports, 
+        // but could be expanded to include other findings like ExposedSecrets)
+        clusterData.summary = calculateAggregateSummary(clusterData.vulnerabilityReports);
+        clusterData.reportsCount = clusterData.vulnerabilityReports.length;
 
         console.log(`[API] Fetched ${cluster} cluster data in ${(performance.now() - startTime).toFixed(0)}ms`);
 
-        return processedData;
+        return clusterData as ClusterData;
     } catch (error) {
         console.error(`[API] Error fetching ${cluster} data:`, error);
         throw error;
@@ -99,29 +151,15 @@ export async function fetchAllClusters(): Promise<ClusterData[]> {
  * Gets the list of available clusters
  */
 export function getAvailableClusters(): string[] {
-    return [...API_CONFIG.clusters]; // Note: This might return defaults if loadConfig hasn't finished, but usually called after fetchAllClusters
+    return [...API_CONFIG.clusters];
 }
 
 /**
  * Processes raw S3/Kubernetes API response into our internal format
  */
-function processRawReports(rawData: S3ReportResponse, cluster: string): ClusterData {
+function processRawReports(rawData: S3ReportResponse, cluster: string): VulnerabilityReport[] {
     const items = rawData.items || [];
-
-    const reports: VulnerabilityReport[] = items.map((item) =>
-        transformReportItem(item, cluster)
-    );
-
-    // Calculate aggregate summary
-    const summary = calculateAggregateSummary(reports);
-
-    return {
-        cluster,
-        lastUpdated: new Date().toISOString(),
-        reportsCount: reports.length,
-        summary,
-        reports,
-    };
+    return items.map((item) => transformReportItem(item, cluster));
 }
 
 /**
@@ -156,7 +194,6 @@ function transformReportItem(item: S3VulnerabilityReportItem, cluster: string): 
         summary,
         vulnerabilities,
         createdAt: metadata.creationTimestamp,
-        updatedAt: metadata.creationTimestamp,
     };
 }
 
@@ -278,6 +315,15 @@ function createEmptyClusterData(cluster: string): ClusterData {
         reportsCount: 0,
         summary: { criticalCount: 0, highCount: 0, mediumCount: 0, lowCount: 0 },
         reports: [],
+        vulnerabilityReports: [],
+        configAuditReports: [],
+        clusterRbacAssessmentReports: [],
+        exposedSecretReports: [],
+        clusterComplianceReports: [],
+        clusterVulnerabilityReports: [],
+        rbacAssessmentReports: [],
+        sbomReports: [],
+        clusterSbomReports: [],
     };
 }
 

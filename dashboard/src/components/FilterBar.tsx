@@ -67,7 +67,7 @@ export function FilterBar({
                     <option value="all">All Clusters</option>
                     {clusters.map((c) => (
                         <option key={c} value={c}>
-                            {c.toUpperCase()}
+                            {c}
                         </option>
                     ))}
                 </select>
