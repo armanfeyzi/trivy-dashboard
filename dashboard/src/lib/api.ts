@@ -196,7 +196,8 @@ function generateCVELink(vulnId: string): string | undefined {
     if (vulnId.startsWith('GHSA-')) {
         return `https://github.com/advisories/${vulnId}`;
     }
-    return undefined;
+    // Fallback to Google search for other formats (RUSTSEC, ALAS, etc.)
+    return `https://www.google.com/search?q=${encodeURIComponent(vulnId + ' vulnerability')}`;
 }
 
 /**

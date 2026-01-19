@@ -224,7 +224,7 @@ function VulnerabilityTableSection({ severity, vulnerabilities }: { severity: st
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-sm)' }}>
                     <thead>
                         <tr style={{ background: 'var(--color-bg-tertiary)', borderBottom: '1px solid var(--color-border)' }}>
-                            <th style={{ padding: 'var(--space-3)', textAlign: 'left', width: '140px', color: 'var(--color-text-secondary)', fontWeight: 600 }}>CVE ID</th>
+                            <th style={{ padding: 'var(--space-3)', textAlign: 'left', width: '200px', color: 'var(--color-text-secondary)', fontWeight: 600 }}>CVE ID</th>
                             <th style={{ padding: 'var(--space-3)', textAlign: 'left', width: '150px', color: 'var(--color-text-secondary)', fontWeight: 600 }}>Resource</th>
                             <th style={{ padding: 'var(--space-3)', textAlign: 'left', width: '120px', color: 'var(--color-text-secondary)', fontWeight: 600 }}>Installed</th>
                             <th style={{ padding: 'var(--space-3)', textAlign: 'left', width: '120px', color: 'var(--color-text-secondary)', fontWeight: 600 }}>Fixed</th>
