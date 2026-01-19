@@ -105,9 +105,13 @@ export interface S3VulnerabilityReportItem {
             criticalCount?: number;
             highCount?: number;
             mediumCount?: number;
+
             lowCount?: number;
         };
-        eosl?: boolean;
+        os?: {
+            eosl?: boolean;
+            [key: string]: any;
+        };
         vulnerabilities?: Array<{
             vulnerabilityID: string;
             severity: string;

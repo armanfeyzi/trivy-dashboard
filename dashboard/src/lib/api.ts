@@ -10,14 +10,36 @@ import type {
 } from './types';
 
 // Configuration - can be overridden via environment variables
+interface Config {
+    clusters: string[];
+}
+
+let loadedConfig: Config | null = null;
+
+// Initial configuration with default
 const API_CONFIG = {
     // Base path for data files (relative to the web root)
     dataPath: '/data',
-    // Available clusters
+    // Default clusters (fallback)
     clusters: ['dev', 'prod'],
     // Refresh interval in milliseconds
     refreshInterval: 30000,
 };
+
+async function loadConfig(): Promise<void> {
+    if (loadedConfig) return;
+    try {
+        const response = await fetch('/config.json');
+        if (response.ok) {
+            loadedConfig = await response.json();
+            if (loadedConfig?.clusters) {
+                API_CONFIG.clusters = loadedConfig.clusters;
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to load config.json, using defaults', e);
+    }
+}
 
 /**
  * Fetches vulnerability reports for a specific cluster
@@ -52,6 +74,8 @@ export async function fetchClusterData(cluster: string): Promise<ClusterData> {
  * Fetches data from all configured clusters
  */
 export async function fetchAllClusters(): Promise<ClusterData[]> {
+    await loadConfig();
+
     const results = await Promise.allSettled(
         API_CONFIG.clusters.map(cluster => fetchClusterData(cluster))
     );
@@ -75,7 +99,7 @@ export async function fetchAllClusters(): Promise<ClusterData[]> {
  * Gets the list of available clusters
  */
 export function getAvailableClusters(): string[] {
-    return [...API_CONFIG.clusters];
+    return [...API_CONFIG.clusters]; // Note: This might return defaults if loadConfig hasn't finished, but usually called after fetchAllClusters
 }
 
 /**
@@ -128,7 +152,7 @@ function transformReportItem(item: S3VulnerabilityReportItem, cluster: string): 
         name: metadata.name || 'unknown',
         containerName,
         imageRef: labels['trivy-operator.resource.name'],
-        eosl: reportData.eosl,
+        eosl: reportData.os?.eosl,
         summary,
         vulnerabilities,
         createdAt: metadata.creationTimestamp,

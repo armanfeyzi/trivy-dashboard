@@ -60,6 +60,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "trivy-dashboard.secretName" . }}
                   key: AWS_SECRET_ACCESS_KEY
+            - name: CLUSTERS
+              value: {{ join "," .Values.dashboard.clusters | quote }}
           resources:
             {{- toYaml .Values.dashboard.resources | nindent 12 }}
           livenessProbe:

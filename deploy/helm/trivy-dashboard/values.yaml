@@ -16,7 +16,7 @@ dashboard:
   replicaCount: 1
   image:
     repository: armanfeyzi/trivy-dashboard
-    tag: "v1.2.11"
+    tag: "v1.2.13"
     pullPolicy: IfNotPresent
   resources:
     requests:
@@ -25,6 +25,10 @@ dashboard:
     limits:
       cpu: 200m
       memory: 256Mi
+  # List of clusters to display in the dashboard
+  clusters:
+    - dev
+    - prod
   service:
     type: ClusterIP
     port: 80
