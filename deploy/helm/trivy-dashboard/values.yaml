@@ -42,7 +42,7 @@ exporter:
   replicaCount: 1
   image:
     repository: armanfeyzi/trivy-exporter
-    tag: "v0.7.0"
+    tag: "v0.7.1"
     pullPolicy: IfNotPresent
   # Sync interval in seconds
   syncInterval: 300

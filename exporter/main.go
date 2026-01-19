@@ -16,7 +16,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -42,7 +41,7 @@ type ReportResource struct {
 var reportResources = []ReportResource{
 	{Name: "vulnerabilityreports", Kind: "VulnerabilityReport", FileName: "vulnerability-reports"},
 	{Name: "configauditreports", Kind: "ConfigAuditReport", FileName: "config-audit-reports"},
-	{Name: "clusterconfigauditreports", Kind: "ClusterConfigAuditReport", FileName: "cluster-config-audit-reports"}, // Added based on typical Trivy operator resources, checking user request
+	{Name: "clusterconfigauditreports", Kind: "ClusterConfigAuditReport", FileName: "cluster-config-audit-reports"},
 	{Name: "clusterrbacassessmentreports", Kind: "ClusterRbacAssessmentReport", FileName: "cluster-rbac-assessment-reports"},
 	{Name: "exposedsecretreports", Kind: "ExposedSecretReport", FileName: "exposed-secret-reports"},
 	{Name: "clustercompliancereports", Kind: "ClusterComplianceReport", FileName: "cluster-compliance-reports"},
@@ -52,25 +51,17 @@ var reportResources = []ReportResource{
 	{Name: "clustersbomreports", Kind: "ClusterSbomReport", FileName: "cluster-sbom-reports"},
 }
 
-// Generic Response structure
-type GenericReportsResponse struct {
-	APIVersion string                      `json:"apiVersion"`
-	Items      []unstructured.Unstructured `json:"items"`
-	Metadata   map[string]interface{}      `json:"metadata,omitempty"`
-}
-
 // CollectionMetadata represents metadata about a collection run
 type CollectionMetadata struct {
 	Cluster         string      `json:"cluster"`
 	Timestamp       string      `json:"timestamp"`
 	CollectedAt     string      `json:"collectedAt"`
-	ReportsCount    int         `json:"reportsCount"` // Total of all reports? Or per type? We'll make this generic or a map
 	ReportTypes     []string    `json:"reportTypes"`
 	CollectionStats interface{} `json:"collectionStats"`
 }
 
 func main() {
-	log.Println("🚀 Starting Trivy Exporter...")
+	log.Println("🚀 Starting Trivy Exporter (Optimized)...")
 
 	// Load configuration
 	cfg := loadConfig()
@@ -169,16 +160,15 @@ func collectAndUploadAll(ctx context.Context, k8s dynamic.Interface, s3Client *s
 	startTime := time.Now()
 	timestamp := time.Now().UTC().Format("20060102-150405")
 	s3Path := fmt.Sprintf("%s/%s", cfg.S3Prefix, cfg.ClusterName)
-	
+
 	collectionStats := make(map[string]int)
 
 	// Collect each report type
 	for _, resource := range reportResources {
 		log.Printf("📥 Fetching %s...", resource.Name)
-		count, err := collectResource(ctx, k8s, s3Client, cfg, resource, s3Path, timestamp)
+		count, err := collectResourcePaged(ctx, k8s, s3Client, cfg, resource, s3Path, timestamp)
 		if err != nil {
 			log.Printf("⚠️ Failed to collect %s: %v", resource.Name, err)
-			// Continue with other resources instead of failing completely
 			continue
 		}
 		collectionStats[resource.Name] = count
@@ -199,7 +189,7 @@ func collectAndUploadAll(ctx context.Context, k8s dynamic.Interface, s3Client *s
 	}
 
 	// Upload main metadata
-	if err := uploadToS3(ctx, s3Client, cfg.S3Bucket, fmt.Sprintf("%s/reports/%s/metadata.json", s3Path, timestamp), metadataJSON); err != nil {
+	if err := uploadBufferToS3(ctx, s3Client, cfg.S3Bucket, fmt.Sprintf("%s/reports/%s/metadata.json", s3Path, timestamp), metadataJSON); err != nil {
 		log.Printf("⚠️ Failed to upload metadata: %v", err)
 	}
 
@@ -211,7 +201,7 @@ func collectAndUploadAll(ctx context.Context, k8s dynamic.Interface, s3Client *s
 		"collectionStats": collectionStats,
 	}
 	indexJSON, _ := json.MarshalIndent(indexData, "", "  ")
-	if err := uploadToS3(ctx, s3Client, cfg.S3Bucket, indexKey, indexJSON); err != nil {
+	if err := uploadBufferToS3(ctx, s3Client, cfg.S3Bucket, indexKey, indexJSON); err != nil {
 		log.Printf("⚠️ Failed to upload index: %v", err)
 	}
 
@@ -228,51 +218,129 @@ func getReportTypeNames() []string {
 	return names
 }
 
-func collectResource(ctx context.Context, k8s dynamic.Interface, s3Client *s3.Client, cfg Config, resource ReportResource, s3Path, timestamp string) (int, error) {
+// collectResourcePaged uses pagination and streaming to temp file to reduce memory usage
+func collectResourcePaged(ctx context.Context, k8s dynamic.Interface, s3Client *s3.Client, cfg Config, resource ReportResource, s3Path, timestamp string) (int, error) {
 	gvr := schema.GroupVersionResource{
 		Group:    "aquasecurity.github.io",
 		Version:  "v1alpha1",
 		Resource: resource.Name,
 	}
 
-	list, err := k8s.Resource(gvr).List(ctx, metav1.ListOptions{})
+	// Create temp file
+	tmpFile, err := os.CreateTemp("", fmt.Sprintf("%s-*.json", resource.FileName))
 	if err != nil {
-		// If resource type doesn't exist (e.g. CRD not installed), just log and return 0
-		if strings.Contains(err.Error(), "could not find the requested resource") {
-			log.Printf("ℹ️ Resource %s not found in cluster (CRD missing?)", resource.Name)
-			return 0, nil
+		return 0, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer func() {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+	}()
+
+	// Write JSON header
+	// Using generic structure compatible with what we had: { "apiVersion": "...", "items": [ ... ] }
+	_, err = tmpFile.WriteString(fmt.Sprintf(`{
+  "apiVersion": "aquasecurity.github.io/v1alpha1",
+  "items": [
+`))
+	if err != nil {
+		return 0, fmt.Errorf("failed to write header: %w", err)
+	}
+
+	limit := int64(500)
+	continueToken := ""
+	totalCount := 0
+	firstItem := true
+
+	for {
+		listOpts := metav1.ListOptions{
+			Limit:    limit,
+			Continue: continueToken,
 		}
-		return 0, err
+
+		list, err := k8s.Resource(gvr).List(ctx, listOpts)
+		if err != nil {
+			if strings.Contains(err.Error(), "could not find the requested resource") {
+				log.Printf("ℹ️ Resource %s not found in cluster (CRD missing?)", resource.Name)
+				return 0, nil
+			}
+			return 0, fmt.Errorf("failed to list %s: %w", resource.Name, err)
+		}
+
+		// Stream items to file
+		for _, item := range list.Items {
+			if !firstItem {
+				if _, err := tmpFile.WriteString(",\n"); err != nil {
+					return 0, err
+				}
+			}
+
+			jsonData, err := item.MarshalJSON()
+			if err != nil {
+				log.Printf("⚠️ Failed to marshal item: %v", err)
+				continue
+			}
+
+			if _, err := tmpFile.Write(jsonData); err != nil {
+				return 0, err
+			}
+
+			firstItem = false
+			totalCount++
+		}
+
+		continueToken = list.GetContinue()
+		if continueToken == "" {
+			break
+		}
 	}
 
-	log.Printf("✅ Found %d %s", len(list.Items), resource.Name)
-
-	response := GenericReportsResponse{
-		APIVersion: "aquasecurity.github.io/v1alpha1",
-		Items:      list.Items,
-	}
-
-	dataJSON, err := json.MarshalIndent(response, "", "  ")
+	// Write JSON footer
+	_, err = tmpFile.WriteString(`
+  ]
+}`)
 	if err != nil {
-		return 0, fmt.Errorf("failed to marshal %s: %w", resource.Name, err)
+		return 0, fmt.Errorf("failed to write footer: %w", err)
+	}
+
+	log.Printf("✅ Found %d %s (Optimized)", totalCount, resource.Name)
+
+	// Reset file pointer definition to start for reading
+	if _, err := tmpFile.Seek(0, 0); err != nil {
+		return 0, fmt.Errorf("failed to seek temp file: %w", err)
 	}
 
 	// Upload 'latest' version
 	latestKey := fmt.Sprintf("%s/%s.json", s3Path, resource.FileName)
-	if err := uploadToS3(ctx, s3Client, cfg.S3Bucket, latestKey, dataJSON); err != nil {
+	if err := uploadFileToS3(ctx, s3Client, cfg.S3Bucket, latestKey, tmpFile); err != nil {
 		return 0, fmt.Errorf("failed to upload latest %s: %w", resource.Name, err)
+	}
+
+	// Reset file pointer again for second upload
+	if _, err := tmpFile.Seek(0, 0); err != nil {
+		return 0, fmt.Errorf("failed to seek temp file: %w", err)
 	}
 
 	// Upload timestamped version
 	timestampKey := fmt.Sprintf("%s/reports/%s/%s.json", s3Path, timestamp, resource.FileName)
-	if err := uploadToS3(ctx, s3Client, cfg.S3Bucket, timestampKey, dataJSON); err != nil {
+	if err := uploadFileToS3(ctx, s3Client, cfg.S3Bucket, timestampKey, tmpFile); err != nil {
 		return 0, fmt.Errorf("failed to upload timestamped %s: %w", resource.Name, err)
 	}
 
-	return len(list.Items), nil
+	return totalCount, nil
 }
 
-func uploadToS3(ctx context.Context, client *s3.Client, bucket, key string, data []byte) error {
+func uploadFileToS3(ctx context.Context, client *s3.Client, bucket, key string, file *os.File) error {
+	// PutObject with os.File automatically handles content length
+	_, err := client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:      aws.String(bucket),
+		Key:         aws.String(key),
+		Body:        file,
+		ContentType: aws.String("application/json"),
+	})
+	return err
+}
+
+func uploadBufferToS3(ctx context.Context, client *s3.Client, bucket, key string, data []byte) error {
 	_, err := client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(bucket),
 		Key:         aws.String(key),
@@ -281,4 +349,3 @@ func uploadToS3(ctx context.Context, client *s3.Client, bucket, key string, data
 	})
 	return err
 }
-
