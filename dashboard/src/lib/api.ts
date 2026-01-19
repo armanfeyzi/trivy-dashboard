@@ -59,81 +59,82 @@ async function loadConfig(): Promise<void> {
  */
 export async function fetchClusterData(cluster: string): Promise<ClusterData> {
     const startTime = performance.now();
-    // Fetch all report types in parallel
-    const promises = Object.entries(REPORT_FILES).map(async ([key, filename]) => {
-        try {
-            // Construct URL: /data/cluster-filename.json
-            let response = await fetch(`${API_CONFIG.dataPath}/${cluster}-${filename}`);
 
-            // Fallback for vulnerabilityReports (backward compatibility)
-            if (!response.ok && key === 'vulnerabilityReports') {
-                const fallbackUrl = `${API_CONFIG.dataPath}/${cluster}-reports.json`;
-                try {
-                    const fallbackResponse = await fetch(fallbackUrl);
-                    if (fallbackResponse.ok) {
-                        console.log(`[API] Fallback to legacy report for ${cluster}`);
-                        response = fallbackResponse;
+    try {
+        // Fetch all report types in parallel
+        const promises = Object.entries(REPORT_FILES).map(async ([key, filename]) => {
+            try {
+                // Construct URL: /data/cluster-filename.json
+                let response = await fetch(`${API_CONFIG.dataPath}/${cluster}-${filename}`);
+
+                // Fallback for vulnerabilityReports (backward compatibility)
+                if (!response.ok && key === 'vulnerabilityReports') {
+                    const fallbackUrl = `${API_CONFIG.dataPath}/${cluster}-reports.json`;
+                    try {
+                        const fallbackResponse = await fetch(fallbackUrl);
+                        if (fallbackResponse.ok) {
+                            console.log(`[API] Fallback to legacy report for ${cluster}`);
+                            response = fallbackResponse;
+                        }
+                    } catch (e) {
+                        console.warn(`[API] Legacy fallback failed for ${cluster}`, e);
                     }
-                } catch (e) {
-                    // Ignore fallback error
-                    console.warn(`[API] Legacy fallback failed for ${cluster}`, e);
                 }
+
+                if (!response.ok) return { key, data: [] };
+
+                const json = await response.json();
+                return { key, data: json };
+            } catch (e) {
+                console.warn(`Failed to fetch ${key} for ${cluster}:`, e);
+                return { key, data: [] };
             }
+        });
 
-            if (!response.ok) return { key, data: [] }; // Return empty if not found
+        const results = await Promise.all(promises);
 
-            const json = await response.json();
-            return { key, data: json };
-        } catch (e) {
-            console.warn(`Failed to fetch ${key} for ${cluster}:`, e);
-            return { key, data: [] };
-        }
-    });
+        // Construct the cluster data object
+        const clusterData: any = {
+            cluster,
+            lastUpdated: new Date().toISOString(),
+            summary: { criticalCount: 0, highCount: 0, mediumCount: 0, lowCount: 0 },
+            reports: [], // For backward compatibility
+            // Initialize with empty arrays
+            vulnerabilityReports: [],
+            configAuditReports: [],
+            clusterRbacAssessmentReports: [],
+            exposedSecretReports: [],
+            clusterComplianceReports: [],
+            clusterVulnerabilityReports: [],
+            rbacAssessmentReports: [],
+            sbomReports: [],
+            clusterSbomReports: [],
+        };
 
-    const results = await Promise.all(promises);
+        // Process results
+        results.forEach(({ key, data }) => {
+            if (key === 'vulnerabilityReports' && data.items) {
+                const processed = processRawReports(data as S3ReportResponse, cluster);
+                clusterData.vulnerabilityReports = processed;
+                clusterData.reports = processed; // Legacy support
+            } else if (data.items) {
+                // For now, store raw items or minimal processing until we have specific processors
+                clusterData[key] = data.items;
+            }
+        });
 
-    // Construct the cluster data object
-    const clusterData: any = {
-        cluster,
-        lastUpdated: new Date().toISOString(),
-        summary: { criticalCount: 0, highCount: 0, mediumCount: 0, lowCount: 0 },
-        reports: [], // For backward compatibility
-        // Initialize with empty arrays
-        vulnerabilityReports: [],
-        configAuditReports: [],
-        clusterRbacAssessmentReports: [],
-        exposedSecretReports: [],
-        clusterComplianceReports: [],
-        clusterVulnerabilityReports: [],
-        rbacAssessmentReports: [],
-        sbomReports: [],
-        clusterSbomReports: [],
-    };
+        // Calculate aggregate summary (currently only based on vulnerability reports, 
+        // but could be expanded to include other findings like ExposedSecrets)
+        clusterData.summary = calculateAggregateSummary(clusterData.vulnerabilityReports);
+        clusterData.reportsCount = clusterData.vulnerabilityReports.length;
 
-    // Process results
-    results.forEach(({ key, data }) => {
-        if (key === 'vulnerabilityReports' && data.items) {
-            const processed = processRawReports(data as S3ReportResponse, cluster);
-            clusterData.vulnerabilityReports = processed;
-            clusterData.reports = processed; // Legacy support
-        } else if (data.items) {
-            // For now, store raw items or minimal processing until we have specific processors
-            clusterData[key] = data.items;
-        }
-    });
+        console.log(`[API] Fetched ${cluster} cluster data in ${(performance.now() - startTime).toFixed(0)}ms`);
 
-    // Calculate aggregate summary (currently only based on vulnerability reports, 
-    // but could be expanded to include other findings like ExposedSecrets)
-    clusterData.summary = calculateAggregateSummary(clusterData.vulnerabilityReports);
-    clusterData.reportsCount = clusterData.vulnerabilityReports.length;
-
-    console.log(`[API] Fetched ${cluster} cluster data in ${(performance.now() - startTime).toFixed(0)}ms`);
-
-    return clusterData as ClusterData;
-} catch (error) {
-    console.error(`[API] Error fetching ${cluster} data:`, error);
-    throw error;
-}
+        return clusterData as ClusterData;
+    } catch (error) {
+        console.error(`[API] Error fetching ${cluster} data:`, error);
+        throw error;
+    }
 }
 
 /**
