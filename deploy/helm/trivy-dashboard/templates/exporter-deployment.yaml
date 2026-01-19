@@ -1,4 +1,4 @@
-{{- if .Values.exporter.enabled }}
+{{- if and .Values.exporter.enabled (ne .Values.server.mode "standalone") }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
