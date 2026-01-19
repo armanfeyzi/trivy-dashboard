@@ -28,6 +28,7 @@ export interface VulnerabilityReport {
     name: string;
     containerName: string;
     imageRef?: string;
+    eosl?: boolean;
     summary: VulnerabilitySummary;
     vulnerabilities: Vulnerability[];
     createdAt?: string;
@@ -106,6 +107,7 @@ export interface S3VulnerabilityReportItem {
             mediumCount?: number;
             lowCount?: number;
         };
+        eosl?: boolean;
         vulnerabilities?: Array<{
             vulnerabilityID: string;
             severity: string;

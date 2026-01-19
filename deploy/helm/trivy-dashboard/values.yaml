@@ -16,7 +16,7 @@ dashboard:
   replicaCount: 1
   image:
     repository: armanfeyzi/trivy-dashboard
-    tag: "v1.2.10"
+    tag: "v1.2.11"
     pullPolicy: IfNotPresent
   resources:
     requests:

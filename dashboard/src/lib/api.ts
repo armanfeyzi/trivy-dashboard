@@ -128,6 +128,7 @@ function transformReportItem(item: S3VulnerabilityReportItem, cluster: string): 
         name: metadata.name || 'unknown',
         containerName,
         imageRef: labels['trivy-operator.resource.name'],
+        eosl: reportData.eosl,
         summary,
         vulnerabilities,
         createdAt: metadata.creationTimestamp,
