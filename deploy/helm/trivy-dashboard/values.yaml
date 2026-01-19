@@ -49,7 +49,6 @@ dashboard:
     type: ClusterIP
     port: 80
 
-# Exporter configuration
 exporter:
   enabled: true
   replicaCount: 1
@@ -67,6 +66,23 @@ exporter:
       cpu: 200m
       memory: 256Mi
 
+# ServiceAccount configuration for IRSA (IAM Roles for Service Accounts)
+serviceAccount:
+  # Annotations to add to the service accounts (e.g., for IRSA)
+  # Example for IRSA:
+  # annotations:
+  #   eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/trivy-exporter-role
+  annotations: {}
+  
+  dashboard:
+    # Additional annotations for dashboard ServiceAccount
+    annotations: {}
+  
+  exporter:
+    # Additional annotations for exporter ServiceAccount
+    # Use this for IRSA when running standalone exporter
+    annotations: {}
+
 # S3 configuration for storing/reading reports
 s3:
   bucket: ""           # Required: your S3 bucket name
@@ -75,6 +91,7 @@ s3:
 
   # AWS credentials (use IAM roles in production when possible)
   # These can also be provided via existingSecret
+  # NOTE: If using IRSA, leave these empty and configure serviceAccount.annotations instead
   accessKeyId: ""
   secretAccessKey: ""
 

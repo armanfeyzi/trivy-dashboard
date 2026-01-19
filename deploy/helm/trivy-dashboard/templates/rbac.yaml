@@ -7,6 +7,13 @@ metadata:
   labels:
     {{- include "trivy-dashboard.labels" . | nindent 4 }}
     app.kubernetes.io/component: dashboard
+  {{- with .Values.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.serviceAccount.dashboard.annotations }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -16,6 +23,13 @@ metadata:
   labels:
     {{- include "trivy-dashboard.labels" . | nindent 4 }}
     app.kubernetes.io/component: exporter
+  {{- with .Values.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.serviceAccount.exporter.annotations }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
