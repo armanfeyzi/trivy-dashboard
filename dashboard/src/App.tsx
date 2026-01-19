@@ -9,6 +9,7 @@ import {
     fetchAllClusters,
     getAvailableClusters,
 } from './lib/api';
+import { GenericReportTable } from './components/GenericReportTable';
 import type { ClusterData, VulnerabilitySummary, VulnerabilityReport } from './lib/types';
 
 function App() {
@@ -336,19 +337,15 @@ function App() {
                             onRowClick={handleRowClick}
                         />
                     ) : (
-                        <div className="card">
-                            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                <h3>{activeView.replace('-', ' ').toUpperCase()} Reports</h3>
-                                <p>Found {filteredReports.length} reports</p>
-                                {/* Temporary placeholder for other tables */}
-                                <div style={{ marginTop: '1rem', overflowX: 'auto' }}>
-                                    <pre style={{ textAlign: 'left', background: 'var(--bg-secondary)', padding: '1rem', borderRadius: '8px' }}>
-                                        {JSON.stringify(filteredReports.slice(0, 3), null, 2)}
-                                        {filteredReports.length > 3 && '\n... more items ...'}
-                                    </pre>
-                                </div>
-                            </div>
-                        </div>
+                        <GenericReportTable
+                            reports={filteredReports}
+                            type={activeView}
+                            isLoading={isLoading}
+                            onRowClick={(report) => {
+                                // For now, maybe just log or expand
+                                console.log('Clicked report', report);
+                            }}
+                        />
                     )}
                 </main>
             </div>
