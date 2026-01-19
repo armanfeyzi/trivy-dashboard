@@ -1,11 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Shield, RefreshCw, Download, Sun, Moon } from 'lucide-react';
-import { SummaryCards } from './components/SummaryCards';
-import { ClusterSelector } from './components/ClusterSelector';
+import { DashboardOverview } from './components/DashboardOverview';
 import { FilterBar } from './components/FilterBar';
 import { VulnerabilityTable } from './components/VulnerabilityTable';
 import { DetailDrawer } from './components/DetailDrawer';
-import { SeverityChart } from './components/SeverityChart';
 import {
     fetchAllClusters,
     getAvailableClusters,
@@ -165,8 +163,8 @@ function App() {
 
     return (
         <div className="app-container">
-            {/* Header */}
-            <header className="header">
+            {/* Header - Simplified */}
+            <header className="header" style={{ height: '60px', padding: '0 var(--space-6)' }}>
                 <div className="header-content">
                     <div className="header-left">
                         <div className="logo">
@@ -175,11 +173,6 @@ function App() {
                             </div>
                             <span className="logo-text">Trivy Dashboard</span>
                         </div>
-                        <ClusterSelector
-                            clusters={getAvailableClusters()}
-                            selectedCluster={selectedCluster}
-                            onClusterChange={setSelectedCluster}
-                        />
                     </div>
                     <div className="header-right">
                         {lastRefresh && (
@@ -235,22 +228,16 @@ function App() {
                     </div>
                 )}
 
-                {/* Summary Cards */}
-                <SummaryCards
+                {/* Dashboard Overview (Combined Stats & Charts) */}
+                <DashboardOverview
                     summary={summary}
                     totalReports={filteredReports.length}
+                    clusters={clusters}
+                    selectedCluster={selectedCluster}
                     isLoading={isLoading}
                 />
 
-                {/* Charts */}
-                {!isLoading && clusters.length > 0 && (
-                    <SeverityChart
-                        clusters={clusters}
-                        selectedCluster={selectedCluster}
-                    />
-                )}
-
-                {/* Filters */}
+                {/* Filters (Now includes Cluster Selection) */}
                 <FilterBar
                     search={search}
                     onSearchChange={setSearch}
@@ -260,6 +247,9 @@ function App() {
                     onSeverityChange={setSeverity}
                     namespaces={namespaces}
                     onClearFilters={clearFilters}
+                    clusters={getAvailableClusters()}
+                    selectedCluster={selectedCluster}
+                    onClusterChange={setSelectedCluster}
                 />
 
                 {/* Table */}
