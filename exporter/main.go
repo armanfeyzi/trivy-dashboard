@@ -8,6 +8,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -28,6 +30,7 @@ type Config struct {
 	S3Prefix     string
 	SyncInterval time.Duration
 	AWSRegion    string
+	PageSize     int
 }
 
 // ReportResource defines the K8s resource to collect
@@ -61,12 +64,12 @@ type CollectionMetadata struct {
 }
 
 func main() {
-	log.Println("🚀 Starting Trivy Exporter (Optimized)...")
+	log.Println("🚀 Starting Trivy Exporter (Optimized v2)...")
 
 	// Load configuration
 	cfg := loadConfig()
-	log.Printf("📋 Configuration: cluster=%s, bucket=%s, interval=%v",
-		cfg.ClusterName, cfg.S3Bucket, cfg.SyncInterval)
+	log.Printf("📋 Configuration: cluster=%s, bucket=%s, interval=%v, pageSize=%d",
+		cfg.ClusterName, cfg.S3Bucket, cfg.SyncInterval, cfg.PageSize)
 
 	// Create Kubernetes client
 	k8sConfig, err := rest.InClusterConfig()
@@ -131,6 +134,7 @@ func loadConfig() Config {
 		S3Prefix:     getEnv("S3_PREFIX", "vuln"),
 		AWSRegion:    getEnv("AWS_REGION", "eu-west-1"),
 		SyncInterval: parseDuration(getEnv("SYNC_INTERVAL", "5m")),
+		PageSize:     parseInt(getEnv("PAGE_SIZE", "20"), 20),
 	}
 
 	if cfg.S3Bucket == "" {
@@ -154,6 +158,14 @@ func parseDuration(s string) time.Duration {
 		return 5 * time.Minute
 	}
 	return d
+}
+
+func parseInt(s string, defaultVal int) int {
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		return defaultVal
+	}
+	return v
 }
 
 func collectAndUploadAll(ctx context.Context, k8s dynamic.Interface, s3Client *s3.Client, cfg Config) error {
@@ -246,10 +258,15 @@ func collectResourcePaged(ctx context.Context, k8s dynamic.Interface, s3Client *
 		return 0, fmt.Errorf("failed to write header: %w", err)
 	}
 
-	limit := int64(500)
+	limit := int64(cfg.PageSize)
+	if limit <= 0 {
+		limit = 20 // Default safe limit
+	}
 	continueToken := ""
 	totalCount := 0
 	firstItem := true
+
+	encoder := json.NewEncoder(tmpFile)
 
 	for {
 		listOpts := metav1.ListOptions{
@@ -269,19 +286,15 @@ func collectResourcePaged(ctx context.Context, k8s dynamic.Interface, s3Client *
 		// Stream items to file
 		for _, item := range list.Items {
 			if !firstItem {
-				if _, err := tmpFile.WriteString(",\n"); err != nil {
+				if _, err := tmpFile.WriteString(","); err != nil {
 					return 0, err
 				}
 			}
 
-			jsonData, err := item.MarshalJSON()
-			if err != nil {
-				log.Printf("⚠️ Failed to marshal item: %v", err)
+			// Encode directly to file to avoid byte slice allocation
+			if err := encoder.Encode(item.Object); err != nil {
+				log.Printf("⚠️ Failed to encode item: %v", err)
 				continue
-			}
-
-			if _, err := tmpFile.Write(jsonData); err != nil {
-				return 0, err
 			}
 
 			firstItem = false
@@ -289,6 +302,12 @@ func collectResourcePaged(ctx context.Context, k8s dynamic.Interface, s3Client *
 		}
 
 		continueToken = list.GetContinue()
+
+		// Clear list to help GC
+		list = nil
+		// Force GC to reclaim memory from the processed page of objects
+		runtime.GC()
+
 		if continueToken == "" {
 			break
 		}
