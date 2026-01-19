@@ -2,8 +2,8 @@ apiVersion: v2
 name: trivy-dashboard
 description: A multi-cluster Trivy vulnerability dashboard with modern UI
 type: application
-version: 1.2.8
-appVersion: "1.2.8"
+version: 1.2.10
+appVersion: "1.2.10"
 keywords:
   - trivy
   - security
