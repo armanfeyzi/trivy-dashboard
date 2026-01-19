@@ -38,7 +38,8 @@ RUN mkdir -p /usr/share/nginx/html/data && \
     chown -R nginx:nginx /tmp && \
     chmod -R 755 /var/cache/nginx && \
     # Modify main nginx.conf to use /tmp/nginx.pid
-    sed -i 's|/var/run/nginx.pid|/tmp/nginx.pid|g' /etc/nginx/nginx.conf
+    sed -i 's|/var/run/nginx.pid|/tmp/nginx.pid|g' /etc/nginx/nginx.conf || true && \
+    sed -i 's|/run/nginx.pid|/tmp/nginx.pid|g' /etc/nginx/nginx.conf
 
 # Install AWS CLI for data sync
 RUN apk add --no-cache aws-cli
