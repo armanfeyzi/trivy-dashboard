@@ -55,3 +55,8 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "trivy-dashboard.fullname" . }}-exporter
     namespace: {{ include "trivy-dashboard.namespace" . }}
+{{- if eq .Values.server.mode "standalone" }}
+  - kind: ServiceAccount
+    name: {{ include "trivy-dashboard.fullname" . }}-dashboard
+    namespace: {{ include "trivy-dashboard.namespace" . }}
+{{- end }}
