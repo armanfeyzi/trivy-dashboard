@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { X, ExternalLink, Package, AlertTriangle, CheckCircle, Clock, Shield } from 'lucide-react';
+import { X, ExternalLink, Package, CheckCircle, Clock, Shield, AlertTriangle } from 'lucide-react';
 import type { VulnerabilityReport, Vulnerability } from '@/lib/types';
 
 interface DetailDrawerProps {
@@ -54,13 +54,14 @@ export function DetailDrawer({ report, onClose }: DetailDrawerProps) {
                     top: 0,
                     right: 0,
                     bottom: 0,
-                    width: 'min(700px, 90vw)',
+                    width: 'min(1000px, 90vw)', // WIDENED
                     background: 'var(--color-bg-secondary)',
                     borderLeft: '1px solid var(--color-border)',
                     zIndex: 1001,
                     display: 'flex',
                     flexDirection: 'column',
                     overflow: 'hidden',
+                    boxShadow: '-4px 0 24px rgba(0,0,0,0.3)',
                 }}
             >
                 {/* Header */}
@@ -111,34 +112,27 @@ export function DetailDrawer({ report, onClose }: DetailDrawerProps) {
                 }}>
                     {/* Metadata Section */}
                     <div style={{ marginBottom: 'var(--space-6)' }}>
-                        <h3 style={{
-                            fontSize: 'var(--font-size-sm)',
-                            fontWeight: 600,
-                            color: 'var(--color-text-secondary)',
-                            marginBottom: 'var(--space-3)',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.05em',
-                        }}>
-                            Report Details
-                        </h3>
                         <div style={{
                             background: 'var(--color-bg-card)',
                             border: '1px solid var(--color-border)',
                             borderRadius: 'var(--radius-lg)',
                             padding: 'var(--space-4)',
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                            gap: 'var(--space-4)',
                         }}>
-                            <InfoRow icon={Package} label="Resource Name" value={report.name} />
-                            <InfoRow icon={Clock} label="Created At" value={report.createdAt ? new Date(report.createdAt).toLocaleString() : 'N/A'} />
+                            <InfoItem icon={Package} label="Resource Name" value={report.name} />
+                            <InfoItem icon={Clock} label="Created At" value={report.createdAt ? new Date(report.createdAt).toLocaleString() : 'N/A'} />
                             {report.imageRef && (
-                                <InfoRow icon={Shield} label="Image" value={report.imageRef} />
+                                <InfoItem icon={Shield} label="Image" value={report.imageRef} />
                             )}
                         </div>
                     </div>
 
-                    {/* Vulnerabilities by Severity */}
+                    {/* Vulnerabilities by Severity (Table View) */}
                     {(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const).map((severity) => (
                         groupedVulns[severity].length > 0 && (
-                            <VulnerabilitySection
+                            <VulnerabilityTableSection
                                 key={severity}
                                 severity={severity}
                                 vulnerabilities={groupedVulns[severity]}
@@ -172,10 +166,10 @@ function StatBox({ label, value, severity }: { label: string; value: number; sev
             background: 'var(--color-bg-card)',
             border: '1px solid var(--color-border)',
             borderRadius: 'var(--radius-md)',
-            padding: 'var(--space-3)',
+            padding: 'var(--space-2) var(--space-3)', // Compact padding
             textAlign: 'center',
         }}>
-            <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, color: colorVar }}>
+            <div style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: colorVar }}>
                 {value}
             </div>
             <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)' }}>
@@ -185,38 +179,26 @@ function StatBox({ label, value, severity }: { label: string; value: number; sev
     );
 }
 
-function InfoRow({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
+function InfoItem({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
     return (
-        <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-3)',
-            padding: 'var(--space-2) 0',
-            borderBottom: '1px solid var(--color-border)',
-        }}>
-            <Icon size={16} style={{ color: 'var(--color-text-tertiary)', flexShrink: 0 }} />
-            <span style={{
-                fontSize: 'var(--font-size-xs)',
-                color: 'var(--color-text-tertiary)',
-                minWidth: '100px',
-            }}>
-                {label}
-            </span>
-            <span style={{
-                fontSize: 'var(--font-size-sm)',
-                color: 'var(--color-text-primary)',
-                fontFamily: 'monospace',
-                wordBreak: 'break-all',
-            }}>
-                {value}
-            </span>
+        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+            <Icon size={16} style={{ color: 'var(--color-text-tertiary)', marginTop: '2px', flexShrink: 0 }} />
+            <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', marginBottom: '2px' }}>
+                    {label}
+                </div>
+                <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-primary)', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                    {value}
+                </div>
+            </div>
         </div>
     );
 }
 
-function VulnerabilitySection({ severity, vulnerabilities }: { severity: string; vulnerabilities: Vulnerability[] }) {
+
+function VulnerabilityTableSection({ severity, vulnerabilities }: { severity: string; vulnerabilities: Vulnerability[] }) {
     const colorVar = `var(--color-${severity.toLowerCase()})`;
-    const bgVar = `var(--color-${severity.toLowerCase()}-bg)`;
+    // const bgVar = `var(--color-${severity.toLowerCase()}-bg)`;
 
     return (
         <div style={{ marginBottom: 'var(--space-6)' }}>
@@ -233,127 +215,91 @@ function VulnerabilitySection({ severity, vulnerabilities }: { severity: string;
                 {severity} ({vulnerabilities.length})
             </h3>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-                {vulnerabilities.map((vuln) => (
-                    <VulnerabilityCard key={vuln.id} vulnerability={vuln} bgColor={bgVar} />
-                ))}
+            <div style={{
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-lg)',
+                overflow: 'hidden',
+                background: 'var(--color-bg-card)',
+            }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-sm)' }}>
+                    <thead>
+                        <tr style={{ background: 'var(--color-bg-tertiary)', borderBottom: '1px solid var(--color-border)' }}>
+                            <th style={{ padding: 'var(--space-3)', textAlign: 'left', width: '140px', color: 'var(--color-text-secondary)', fontWeight: 600 }}>CVE ID</th>
+                            <th style={{ padding: 'var(--space-3)', textAlign: 'left', width: '150px', color: 'var(--color-text-secondary)', fontWeight: 600 }}>Resource</th>
+                            <th style={{ padding: 'var(--space-3)', textAlign: 'left', width: '120px', color: 'var(--color-text-secondary)', fontWeight: 600 }}>Installed</th>
+                            <th style={{ padding: 'var(--space-3)', textAlign: 'left', width: '120px', color: 'var(--color-text-secondary)', fontWeight: 600 }}>Fixed</th>
+                            <th style={{ padding: 'var(--space-3)', textAlign: 'left', color: 'var(--color-text-secondary)', fontWeight: 600 }}>Title</th>
+                            <th style={{ padding: 'var(--space-3)', width: '40px' }}></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {vulnerabilities.map((vuln) => (
+                            <VulnerabilityRow key={vuln.id} vulnerability={vuln} severity={severity} />
+                        ))}
+                    </tbody>
+                </table>
             </div>
         </div>
     );
 }
 
-function VulnerabilityCard({ vulnerability, bgColor }: { vulnerability: Vulnerability; bgColor: string }) {
+function VulnerabilityRow({ vulnerability, severity }: { vulnerability: Vulnerability; severity: string }) {
+    const bgVar = `var(--color-${severity.toLowerCase()}-bg)`;
+    const textVar = `var(--color-${severity.toLowerCase()})`;
+
     return (
-        <div style={{
-            background: 'var(--color-bg-card)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 'var(--radius-lg)',
-            overflow: 'hidden',
-        }}>
-            {/* Header - CVE ID only */}
-            <div style={{
-                background: bgColor,
-                padding: 'var(--space-3) var(--space-4)',
-            }}>
+        <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+            {/* ID */}
+            <td style={{ padding: 'var(--space-3)', verticalAlign: 'top' }}>
                 <span style={{
+                    display: 'inline-block',
+                    background: bgVar,
+                    color: textVar,
+                    padding: '2px 8px',
+                    borderRadius: '4px',
                     fontFamily: 'monospace',
-                    fontWeight: 600,
-                    fontSize: 'var(--font-size-sm)',
+                    fontSize: 'var(--font-size-xs)',
+                    fontWeight: 600
                 }}>
                     {vulnerability.id}
                 </span>
-            </div>
+            </td>
 
-            {/* Content */}
-            <div style={{ padding: 'var(--space-4)' }}>
-                {vulnerability.title && (
-                    <p style={{
-                        fontSize: 'var(--font-size-sm)',
-                        color: 'var(--color-text-secondary)',
-                        marginBottom: 'var(--space-3)',
-                        lineHeight: 1.5,
-                    }}>
-                        {vulnerability.title}
-                    </p>
-                )}
+            {/* Resource */}
+            <td style={{ padding: 'var(--space-3)', verticalAlign: 'top', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                {vulnerability.resource}
+            </td>
 
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                    gap: 'var(--space-3)',
-                }}>
-                    {vulnerability.resource && (
-                        <DetailItem label="Resource" value={vulnerability.resource} />
-                    )}
-                    {vulnerability.target && (
-                        <DetailItem label="Target" value={vulnerability.target} />
-                    )}
-                    {vulnerability.installedVersion && (
-                        <DetailItem
-                            label="Installed Version"
-                            value={vulnerability.installedVersion}
-                            highlight="danger"
-                        />
-                    )}
-                    {vulnerability.fixedVersion && (
-                        <DetailItem
-                            label="Fixed Version"
-                            value={vulnerability.fixedVersion}
-                            highlight="success"
-                        />
-                    )}
-                    {vulnerability.publishedDate && (
-                        <DetailItem
-                            label="Published"
-                            value={new Date(vulnerability.publishedDate).toLocaleDateString()}
-                        />
-                    )}
-                </div>
+            {/* Installed */}
+            <td style={{ padding: 'var(--space-3)', verticalAlign: 'top', fontFamily: 'monospace', color: 'var(--color-text-secondary)' }}>
+                {vulnerability.installedVersion}
+            </td>
 
-                {/* CVE Link - moved into detail area */}
+            {/* Fixed */}
+            <td style={{ padding: 'var(--space-3)', verticalAlign: 'top', fontFamily: 'monospace', color: 'var(--color-success)' }}>
+                {vulnerability.fixedVersion}
+            </td>
+
+            {/* Title */}
+            <td style={{ padding: 'var(--space-3)', verticalAlign: 'top', color: 'var(--color-text-secondary)', lineHeight: 1.4 }}>
+                {vulnerability.title || <span style={{ opacity: 0.5, fontStyle: 'italic' }}>No description available</span>}
+            </td>
+
+            {/* Action */}
+            <td style={{ padding: 'var(--space-3)', verticalAlign: 'top', textAlign: 'right' }}>
                 {vulnerability.primaryLink && (
-                    <div style={{ marginTop: 'var(--space-3)', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--color-border)' }}>
-                        <a
-                            href={vulnerability.primaryLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="btn btn-secondary btn-sm"
-                            style={{ display: 'inline-flex', gap: 'var(--space-2)' }}
-                        >
-                            <ExternalLink size={14} />
-                            View CVE Details
-                        </a>
-                    </div>
+                    <a
+                        href={vulnerability.primaryLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-icon btn-ghost btn-sm"
+                        title="View CVE Details"
+                        style={{ color: 'var(--color-text-tertiary)' }}
+                    >
+                        <ExternalLink size={16} />
+                    </a>
                 )}
-            </div>
-        </div>
-    );
-}
-
-function DetailItem({ label, value, highlight }: { label: string; value: string; highlight?: 'success' | 'danger' }) {
-    const valueColor = highlight === 'success'
-        ? 'var(--color-success)'
-        : highlight === 'danger'
-            ? 'var(--color-error)'
-            : 'var(--color-text-primary)';
-
-    return (
-        <div>
-            <div style={{
-                fontSize: 'var(--font-size-xs)',
-                color: 'var(--color-text-tertiary)',
-                marginBottom: '2px',
-            }}>
-                {label}
-            </div>
-            <div style={{
-                fontSize: 'var(--font-size-sm)',
-                color: valueColor,
-                fontFamily: 'monospace',
-                wordBreak: 'break-all',
-            }}>
-                {value}
-            </div>
-        </div>
+            </td>
+        </tr>
     );
 }
