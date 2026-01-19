@@ -10,13 +10,26 @@ namespace:
   create: true
   name: trivy-dashboard
 
+# Server Mode: "distributed" (default) or "standalone"
+# standalone: Exporter runs as sidecar, sharing volume with dashboard (No S3 sync needed)
+# distributed: Exporter runs separately, syncing via S3
+server:
+  mode: "standalone"
+
+# Persistence for standalone mode
+persistence:
+  enabled: true
+  storageClass: "" # default
+  size: 1Gi
+  accessMode: ReadWriteOnce
+
 # Dashboard configuration
 dashboard:
   enabled: true
   replicaCount: 1
   image:
     repository: armanfeyzi/trivy-dashboard
-    tag: "v1.3.4"
+    tag: "v1.3.5"
     pullPolicy: IfNotPresent
   resources:
     requests:
