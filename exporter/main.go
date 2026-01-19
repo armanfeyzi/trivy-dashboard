@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -31,6 +32,7 @@ type Config struct {
 	SyncInterval time.Duration
 	AWSRegion    string
 	PageSize     int
+	FSOutputDir  string // Optional: write to local filesystem
 }
 
 // ReportResource defines the K8s resource to collect
@@ -64,12 +66,12 @@ type CollectionMetadata struct {
 }
 
 func main() {
-	log.Println("🚀 Starting Trivy Exporter (Optimized v2)...")
+	log.Println("🚀 Starting Trivy Exporter (Optimized v3 - PVC)...")
 
 	// Load configuration
 	cfg := loadConfig()
-	log.Printf("📋 Configuration: cluster=%s, bucket=%s, interval=%v, pageSize=%d",
-		cfg.ClusterName, cfg.S3Bucket, cfg.SyncInterval, cfg.PageSize)
+	log.Printf("📋 Configuration: cluster=%s, bucket=%s, interval=%v, pageSize=%d, fsDir=%s",
+		cfg.ClusterName, cfg.S3Bucket, cfg.SyncInterval, cfg.PageSize, cfg.FSOutputDir)
 
 	// Create Kubernetes client
 	k8sConfig, err := rest.InClusterConfig()
@@ -82,14 +84,26 @@ func main() {
 		log.Fatalf("❌ Failed to create Kubernetes client: %v", err)
 	}
 
-	// Create AWS S3 client
-	awsCfg, err := config.LoadDefaultConfig(context.Background(),
-		config.WithRegion(cfg.AWSRegion),
-	)
-	if err != nil {
-		log.Fatalf("❌ Failed to load AWS config: %v", err)
+	// Create AWS S3 client only if Bucket is provided
+	var s3Client *s3.Client
+	if cfg.S3Bucket != "" {
+		awsCfg, err := config.LoadDefaultConfig(context.Background(),
+			config.WithRegion(cfg.AWSRegion),
+		)
+		if err != nil {
+			log.Fatalf("❌ Failed to load AWS config: %v", err)
+		}
+		s3Client = s3.NewFromConfig(awsCfg)
+	} else {
+		log.Println("ℹ️ S3_BUCKET not set. S3 upload disabled.")
 	}
-	s3Client := s3.NewFromConfig(awsCfg)
+
+	// Prepare output directory if needed
+	if cfg.FSOutputDir != "" {
+		if err := os.MkdirAll(fmt.Sprintf("%s/%s", cfg.FSOutputDir, cfg.ClusterName), 0755); err != nil {
+			log.Fatalf("❌ Failed to create output directory: %v", err)
+		}
+	}
 
 	// Set up signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -135,10 +149,11 @@ func loadConfig() Config {
 		AWSRegion:    getEnv("AWS_REGION", "eu-west-1"),
 		SyncInterval: parseDuration(getEnv("SYNC_INTERVAL", "5m")),
 		PageSize:     parseInt(getEnv("PAGE_SIZE", "20"), 20),
+		FSOutputDir:  getEnv("FS_OUTPUT_DIR", ""),
 	}
 
-	if cfg.S3Bucket == "" {
-		log.Fatal("❌ S3_BUCKET environment variable is required")
+	if cfg.S3Bucket == "" && cfg.FSOutputDir == "" {
+		log.Fatal("❌ Either S3_BUCKET or FS_OUTPUT_DIR environment variable is required")
 	}
 
 	return cfg
@@ -200,21 +215,38 @@ func collectAndUploadAll(ctx context.Context, k8s dynamic.Interface, s3Client *s
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
-	// Upload main metadata
-	if err := uploadBufferToS3(ctx, s3Client, cfg.S3Bucket, fmt.Sprintf("%s/reports/%s/metadata.json", s3Path, timestamp), metadataJSON); err != nil {
-		log.Printf("⚠️ Failed to upload metadata: %v", err)
+	// Upload main metadata to S3 if enabled
+	if s3Client != nil {
+		if err := uploadBufferToS3(ctx, s3Client, cfg.S3Bucket, fmt.Sprintf("%s/reports/%s/metadata.json", s3Path, timestamp), metadataJSON); err != nil {
+			log.Printf("⚠️ Failed to upload metadata to S3: %v", err)
+		}
 	}
 
 	// Update cluster index (generic)
-	indexKey := fmt.Sprintf("%s/index.json", s3Path)
 	indexData := map[string]interface{}{
 		"cluster":         cfg.ClusterName,
 		"lastUpdated":     time.Now().UTC().Format(time.RFC3339),
 		"collectionStats": collectionStats,
 	}
 	indexJSON, _ := json.MarshalIndent(indexData, "", "  ")
-	if err := uploadBufferToS3(ctx, s3Client, cfg.S3Bucket, indexKey, indexJSON); err != nil {
-		log.Printf("⚠️ Failed to upload index: %v", err)
+
+	if s3Client != nil {
+		indexKey := fmt.Sprintf("%s/index.json", s3Path)
+		if err := uploadBufferToS3(ctx, s3Client, cfg.S3Bucket, indexKey, indexJSON); err != nil {
+			log.Printf("⚠️ Failed to upload index to S3: %v", err)
+		}
+	}
+
+	// Write to FS if enabled
+	if cfg.FSOutputDir != "" {
+		// Just write main cluster index locally as "index.json" or similar?
+		// Usually dashboard expects <cluster>-<report>.json.
+		// Actually, we probably don't need the metadata/index files locally for the dashboard,
+		// as it iterates known report types. But let's write index.json anyway for completeness.
+		fsClusterDir := fmt.Sprintf("%s/%s", cfg.FSOutputDir, cfg.ClusterName)
+		if err := os.WriteFile(fmt.Sprintf("%s/index.json", fsClusterDir), indexJSON, 0644); err != nil {
+			log.Printf("⚠️ Failed to write index to FS: %v", err)
+		}
 	}
 
 	duration := time.Since(startTime)
@@ -232,6 +264,8 @@ func getReportTypeNames() []string {
 
 // collectResourcePaged uses pagination and streaming to temp file to reduce memory usage
 func collectResourcePaged(ctx context.Context, k8s dynamic.Interface, s3Client *s3.Client, cfg Config, resource ReportResource, s3Path, timestamp string) (int, error) {
+	// ... (setup GVR and temp file) ...
+	// RE-IMPLEMENTING START OF FUNCTION DUE TO TOOL LIMITATIONS - KEEPING CONTEXT
 	gvr := schema.GroupVersionResource{
 		Group:    "aquasecurity.github.io",
 		Version:  "v1alpha1",
@@ -245,11 +279,10 @@ func collectResourcePaged(ctx context.Context, k8s dynamic.Interface, s3Client *
 	}
 	defer func() {
 		tmpFile.Close()
-		os.Remove(tmpFile.Name())
+		os.Remove(tmpFile.Name()) // Remove temp file after uploading/copying
 	}()
 
 	// Write JSON header
-	// Using generic structure compatible with what we had: { "apiVersion": "...", "items": [ ... ] }
 	_, err = tmpFile.WriteString(fmt.Sprintf(`{
   "apiVersion": "aquasecurity.github.io/v1alpha1",
   "items": [
@@ -258,9 +291,10 @@ func collectResourcePaged(ctx context.Context, k8s dynamic.Interface, s3Client *
 		return 0, fmt.Errorf("failed to write header: %w", err)
 	}
 
+	// ... Pagination Logic (Keep existing logic) ...
 	limit := int64(cfg.PageSize)
 	if limit <= 0 {
-		limit = 20 // Default safe limit
+		limit = 20
 	}
 	continueToken := ""
 	totalCount := 0
@@ -283,29 +317,22 @@ func collectResourcePaged(ctx context.Context, k8s dynamic.Interface, s3Client *
 			return 0, fmt.Errorf("failed to list %s: %w", resource.Name, err)
 		}
 
-		// Stream items to file
 		for _, item := range list.Items {
 			if !firstItem {
 				if _, err := tmpFile.WriteString(","); err != nil {
 					return 0, err
 				}
 			}
-
-			// Encode directly to file to avoid byte slice allocation
 			if err := encoder.Encode(item.Object); err != nil {
 				log.Printf("⚠️ Failed to encode item: %v", err)
 				continue
 			}
-
 			firstItem = false
 			totalCount++
 		}
 
 		continueToken = list.GetContinue()
-
-		// Clear list to help GC
 		list = nil
-		// Force GC to reclaim memory from the processed page of objects
 		runtime.GC()
 
 		if continueToken == "" {
@@ -321,28 +348,59 @@ func collectResourcePaged(ctx context.Context, k8s dynamic.Interface, s3Client *
 		return 0, fmt.Errorf("failed to write footer: %w", err)
 	}
 
-	log.Printf("✅ Found %d %s (Optimized)", totalCount, resource.Name)
+	log.Printf("✅ Found %d %s", totalCount, resource.Name)
 
-	// Reset file pointer definition to start for reading
+	// Reset file pointer for reading
 	if _, err := tmpFile.Seek(0, 0); err != nil {
 		return 0, fmt.Errorf("failed to seek temp file: %w", err)
 	}
 
-	// Upload 'latest' version
-	latestKey := fmt.Sprintf("%s/%s.json", s3Path, resource.FileName)
-	if err := uploadFileToS3(ctx, s3Client, cfg.S3Bucket, latestKey, tmpFile); err != nil {
-		return 0, fmt.Errorf("failed to upload latest %s: %w", resource.Name, err)
+	// Upload to S3 if enabled
+	if s3Client != nil {
+		// latest
+		latestKey := fmt.Sprintf("%s/%s.json", s3Path, resource.FileName)
+		if err := uploadFileToS3(ctx, s3Client, cfg.S3Bucket, latestKey, tmpFile); err != nil {
+			return 0, fmt.Errorf("failed to upload latest %s: %w", resource.Name, err)
+		}
+
+		// timestamped
+		if _, err := tmpFile.Seek(0, 0); err != nil {
+			return 0, err
+		} // Reset
+		timestampKey := fmt.Sprintf("%s/reports/%s/%s.json", s3Path, timestamp, resource.FileName)
+		if err := uploadFileToS3(ctx, s3Client, cfg.S3Bucket, timestampKey, tmpFile); err != nil {
+			return 0, fmt.Errorf("failed to upload timestamped %s: %w", resource.Name, err)
+		}
 	}
 
-	// Reset file pointer again for second upload
-	if _, err := tmpFile.Seek(0, 0); err != nil {
-		return 0, fmt.Errorf("failed to seek temp file: %w", err)
-	}
+	// Write to FS if enabled
+	if cfg.FSOutputDir != "" {
+		// Reset file pointer
+		if _, err := tmpFile.Seek(0, 0); err != nil {
+			return 0, err
+		}
 
-	// Upload timestamped version
-	timestampKey := fmt.Sprintf("%s/reports/%s/%s.json", s3Path, timestamp, resource.FileName)
-	if err := uploadFileToS3(ctx, s3Client, cfg.S3Bucket, timestampKey, tmpFile); err != nil {
-		return 0, fmt.Errorf("failed to upload timestamped %s: %w", resource.Name, err)
+		// Destination path: /output/cluster-name/report-filename.json
+		// Note: Dashboard expects <cluster>-<report>.json in its data dir.
+		// If we mount /data in dashboard, we should write directly to /data/<cluster>-<report>.json
+		// OR write to /data/<cluster>/<report>.json and update dashboard to look there.
+		// Current dashboard expects: /data/<cluster>-<report>.json.
+		// Let's stick to that flat structure in the output dir if we want minimal dashboard changes?
+		// Actually, the `FSOutputDir` logic above created a subdirectory `cfg.ClusterName`.
+		// Let's adjust to match existing dashboard expectations.
+
+		destPath := fmt.Sprintf("%s/%s-%s.json", cfg.FSOutputDir, cfg.ClusterName, resource.FileName)
+
+		outFile, err := os.Create(destPath)
+		if err != nil {
+			return 0, fmt.Errorf("failed to create FS output file: %w", err)
+		}
+		defer outFile.Close()
+
+		if _, err := io.Copy(outFile, tmpFile); err != nil {
+			return 0, fmt.Errorf("failed to write FS output: %w", err)
+		}
+		log.Printf("💾 Saved to %s", destPath)
 	}
 
 	return totalCount, nil

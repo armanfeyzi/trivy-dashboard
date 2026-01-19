@@ -16,7 +16,7 @@ echo "{\"clusters\": $JSON_CLUSTERS}" > /usr/share/nginx/html/config.json
 
 # Sync data from S3 if configured
 # Sync data from S3 if configured
-if [ -n "$S3_BUCKET" ]; then
+if [ -n "$S3_BUCKET" ] && [ "$DISABLE_S3_SYNC" != "true" ]; then
     echo "📥 Starting background S3 sync..."
     
     sync_data() {
