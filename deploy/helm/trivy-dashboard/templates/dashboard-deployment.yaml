@@ -35,6 +35,12 @@ spec:
               containerPort: 8080
               protocol: TCP
           env:
+            - name: CLUSTERS
+              value: {{ join "," .Values.dashboard.clusters | quote }}
+            {{- if eq .Values.server.mode "standalone" }}
+            - name: DISABLE_S3_SYNC
+              value: "true"
+            {{- else }}
             - name: S3_BUCKET
               valueFrom:
                 secretKeyRef:
@@ -60,10 +66,14 @@ spec:
                 secretKeyRef:
                   name: {{ include "trivy-dashboard.secretName" . }}
                   key: AWS_SECRET_ACCESS_KEY
-            - name: CLUSTERS
-              value: {{ join "," .Values.dashboard.clusters | quote }}
+            {{- end }}
           resources:
             {{- toYaml .Values.dashboard.resources | nindent 12 }}
+          volumeMounts:
+            {{- if eq .Values.server.mode "standalone" }}
+            - name: data
+              mountPath: /usr/share/nginx/html/data
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /health
@@ -76,4 +86,68 @@ spec:
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
+
+        {{- if eq .Values.server.mode "standalone" }}
+        - name: exporter
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+            runAsUser: 1000
+            fsGroup: 1000
+          image: "{{ .Values.exporter.image.repository }}:{{ .Values.exporter.image.tag }}"
+          imagePullPolicy: {{ .Values.exporter.image.pullPolicy }}
+          env:
+            - name: CLUSTER_NAME
+              value: {{ .Values.clusterName | quote }}
+            - name: SYNC_INTERVAL
+              value: {{ .Values.exporter.syncInterval | quote }}
+            - name: FS_OUTPUT_DIR
+              value: "/data"
+            # Optional: S3 credentials for Exporter (it can still upload to S3 if configured)
+            - name: S3_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trivy-dashboard.secretName" . }}
+                  key: S3_BUCKET
+                  optional: true
+            - name: S3_PREFIX
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trivy-dashboard.secretName" . }}
+                  key: S3_PREFIX
+                  optional: true
+            - name: AWS_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trivy-dashboard.secretName" . }}
+                  key: AWS_REGION
+                  optional: true
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trivy-dashboard.secretName" . }}
+                  key: AWS_ACCESS_KEY_ID
+                  optional: true
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trivy-dashboard.secretName" . }}
+                  key: AWS_SECRET_ACCESS_KEY
+                  optional: true
+          resources:
+            {{- toYaml .Values.exporter.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+        {{- end }}
+
+      volumes:
+        {{- if eq .Values.server.mode "standalone" }}
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "trivy-dashboard.fullname" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- end }}
 {{- end }}
