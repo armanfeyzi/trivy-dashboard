@@ -43,6 +43,7 @@ type ReportResource struct {
 }
 
 // List of resources to collect
+// Note: SBOM reports (sbomreports, clustersbomreports) are disabled to reduce storage and improve performance
 var reportResources = []ReportResource{
 	{Name: "vulnerabilityreports", Kind: "VulnerabilityReport", FileName: "vulnerability-reports"},
 	{Name: "configauditreports", Kind: "ConfigAuditReport", FileName: "config-audit-reports"},
@@ -52,8 +53,6 @@ var reportResources = []ReportResource{
 	{Name: "clustercompliancereports", Kind: "ClusterComplianceReport", FileName: "cluster-compliance-reports"},
 	{Name: "clustervulnerabilityreports", Kind: "ClusterVulnerabilityReport", FileName: "cluster-vulnerability-reports"},
 	{Name: "rbacassessmentreports", Kind: "RbacAssessmentReport", FileName: "rbac-assessment-reports"},
-	{Name: "sbomreports", Kind: "SbomReport", FileName: "sbom-reports"},
-	{Name: "clustersbomreports", Kind: "ClusterSbomReport", FileName: "cluster-sbom-reports"},
 }
 
 // CollectionMetadata represents metadata about a collection run
