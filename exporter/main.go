@@ -215,12 +215,9 @@ func collectAndUploadAll(ctx context.Context, k8s dynamic.Interface, s3Client *s
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
-	// Upload main metadata to S3 if enabled
-	if s3Client != nil {
-		if err := uploadBufferToS3(ctx, s3Client, cfg.S3Bucket, fmt.Sprintf("%s/reports/%s/metadata.json", s3Path, timestamp), metadataJSON); err != nil {
-			log.Printf("⚠️ Failed to upload metadata to S3: %v", err)
-		}
-	}
+	// Note: Metadata is now only stored locally if FS output is enabled
+	// S3 only contains latest reports (no timestamped snapshots)
+	_ = metadataJSON // Suppress unused variable warning
 
 	// Update cluster index (generic)
 	indexData := map[string]interface{}{
@@ -363,14 +360,7 @@ func collectResourcePaged(ctx context.Context, k8s dynamic.Interface, s3Client *
 			return 0, fmt.Errorf("failed to upload latest %s: %w", resource.Name, err)
 		}
 
-		// timestamped
-		if _, err := tmpFile.Seek(0, 0); err != nil {
-			return 0, err
-		} // Reset
-		timestampKey := fmt.Sprintf("%s/reports/%s/%s.json", s3Path, timestamp, resource.FileName)
-		if err := uploadFileToS3(ctx, s3Client, cfg.S3Bucket, timestampKey, tmpFile); err != nil {
-			return 0, fmt.Errorf("failed to upload timestamped %s: %w", resource.Name, err)
-		}
+		// Note: Timestamped snapshots disabled - only latest reports are stored
 	}
 
 	// Write to FS if enabled
