@@ -27,6 +27,7 @@ const API_CONFIG = {
 };
 
 // Map of report types to their filenames (must match backend)
+// Note: SBOM reports (sbomReports, clusterSbomReports) are disabled to reduce storage
 const REPORT_FILES = {
     vulnerabilityReports: 'vulnerability-reports.json',
     configAuditReports: 'config-audit-reports.json',
@@ -35,8 +36,6 @@ const REPORT_FILES = {
     clusterComplianceReports: 'cluster-compliance-reports.json',
     clusterVulnerabilityReports: 'cluster-vulnerability-reports.json',
     rbacAssessmentReports: 'rbac-assessment-reports.json',
-    sbomReports: 'sbom-reports.json',
-    clusterSbomReports: 'cluster-sbom-reports.json',
 };
 
 async function loadConfig(): Promise<void> {
@@ -107,8 +106,6 @@ export async function fetchClusterData(cluster: string): Promise<ClusterData> {
             clusterComplianceReports: [],
             clusterVulnerabilityReports: [],
             rbacAssessmentReports: [],
-            sbomReports: [],
-            clusterSbomReports: [],
         };
 
         // Process results
@@ -337,8 +334,6 @@ function createEmptyClusterData(cluster: string): ClusterData {
         clusterComplianceReports: [],
         clusterVulnerabilityReports: [],
         rbacAssessmentReports: [],
-        sbomReports: [],
-        clusterSbomReports: [],
     };
 }
 

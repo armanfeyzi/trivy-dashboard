@@ -64,8 +64,7 @@ export interface ClusterData {
     clusterComplianceReports: any[];
     clusterVulnerabilityReports: any[];
     rbacAssessmentReports: any[];
-    sbomReports: any[];
-    clusterSbomReports: any[];
+    // Note: SBOM reports disabled to reduce storage and improve performance
 
     // Legacy support (optional, or we can just map 'reports' to vulnerabilityReports for backward compat)
     reports: VulnerabilityReport[];

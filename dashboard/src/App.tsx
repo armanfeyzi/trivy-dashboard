@@ -96,8 +96,6 @@ function App() {
             case 'cluster-compliance': return clusterData.clusterComplianceReports;
             case 'cluster-vulnerability': return clusterData.clusterVulnerabilityReports;
             case 'cluster-rbac': return clusterData.clusterRbacAssessmentReports;
-            case 'sbom': return clusterData.sbomReports;
-            case 'cluster-sbom': return clusterData.clusterSbomReports;
             default: return [];
         }
     };
@@ -114,8 +112,6 @@ function App() {
                     case 'cluster-compliance': return c.clusterComplianceReports;
                     case 'cluster-vulnerability': return c.clusterVulnerabilityReports;
                     case 'cluster-rbac': return c.clusterRbacAssessmentReports;
-                    case 'sbom': return c.sbomReports;
-                    case 'cluster-sbom': return c.clusterSbomReports;
                     default: return [];
                 }
             });
@@ -222,8 +218,6 @@ function App() {
             clusterComplianceReports: 0,
             clusterVulnerabilityReports: 0,
             clusterRbacAssessmentReports: 0,
-            sbomReports: 0,
-            clusterSbomReports: 0,
         };
 
         const targetClusters = selectedCluster === 'all' ? clusters : clusters.filter(c => c.cluster === selectedCluster);
@@ -236,8 +230,6 @@ function App() {
             base.clusterComplianceReports += c.clusterComplianceReports?.length || 0;
             base.clusterVulnerabilityReports += c.clusterVulnerabilityReports?.length || 0;
             base.clusterRbacAssessmentReports += c.clusterRbacAssessmentReports?.length || 0;
-            base.sbomReports += c.sbomReports?.length || 0;
-            base.clusterSbomReports += c.clusterSbomReports?.length || 0;
         });
         return base;
     }, [clusters, selectedCluster]);
