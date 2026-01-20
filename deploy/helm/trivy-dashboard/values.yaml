@@ -34,10 +34,7 @@ dashboard:
   resources:
     requests:
       cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 200m
-      memory: 256Mi
+      memory: 128Mi
   # List of ALL clusters to display in the dashboard.
   # This list MUST match the 'clusterName' configured in the exporter of each cluster.
   # Example: ["dev", "PRODUCTION", "staging"]
@@ -61,10 +58,7 @@ exporter:
   resources:
     requests:
       cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 200m
-      memory: 256Mi
+      memory: 128Mi
 
 # ServiceAccount configuration for IRSA (IAM Roles for Service Accounts)
 serviceAccount:
