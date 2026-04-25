@@ -28,9 +28,9 @@ dashboard:
   enabled: true
   replicaCount: 1
   image:
-    repository: armanfeyzi/trivy-dashboard
-    tag: "v1.4.1"
-    pullPolicy: IfNotPresent
+    repository: ghcr.io/armanfeyzi/trivy-dashboard/dashboard
+    tag: "sha-5e6fdb4"  # updated automatically by CI on each push to main
+    pullPolicy: Always
   resources:
     requests:
       cpu: 50m
