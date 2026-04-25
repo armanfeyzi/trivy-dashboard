@@ -115,8 +115,19 @@ export async function fetchClusterData(cluster: string): Promise<ClusterData> {
                 clusterData.vulnerabilityReports = processed;
                 clusterData.reports = processed; // Legacy support
             } else if (data.items) {
-                // For now, store raw items or minimal processing until we have specific processors
-                clusterData[key] = data.items;
+                // Inject the cluster name into each raw K8s item so the UI can
+                // read report.cluster uniformly across all report types.
+                clusterData[key] = (data.items as any[]).map((item: any) => ({
+                    ...item,
+                    cluster,
+                    // Hoist the nested summary to the top level for convenience
+                    summary: item.report?.summary ?? {
+                        criticalCount: 0,
+                        highCount: 0,
+                        mediumCount: 0,
+                        lowCount: 0,
+                    },
+                }));
             }
         });
 
